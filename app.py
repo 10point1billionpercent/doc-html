@@ -17,37 +17,44 @@ CORS(
 def options_handler(path):
     return ("", 204)
 
-# (ALL YOUR EXISTING ENDPOINTS BELOW… unchanged)
 
+# --------------------------------------------
+# GROQ CLIENT
+# --------------------------------------------
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-# ----------------------------------------------------------
-# SAFE JSON EXTRACTOR (Fixes Render empty-body issue)
-# ----------------------------------------------------------
+
+# --------------------------------------------
+# SAFE JSON PARSER FOR RENDER
+# --------------------------------------------
 def get_json():
     try:
         if request.is_json:
             return request.get_json()
-        else:
-            raw = request.data.decode("utf-8")
-            print("RAW BODY FROM RENDER:", raw)
-            return json.loads(raw) if raw else {}
+        raw = request.data.decode("utf-8")
+        print("RAW BODY FROM RENDER:", raw)
+        return json.loads(raw) if raw else {}
     except Exception as e:
         print("JSON PARSE ERROR:", e)
         return {}
 
-# ----------------------------------------------------------
-# ONBOARDING ENDPOINT
-# ----------------------------------------------------------
+
+# ===================================================================
+# 1) ONBOARDING PLAN  (matches goldfish EXACTLY)
+# ===================================================================
 @app.post("/onboarding-plan")
-def generate_onboarding():
+def onboarding_plan():
     data = get_json()
-    vague_goal = data.get("vague_goal")
-    progress = data.get("progress")
-    time_limit = data.get("time_limit")
+
+    vague_goal = data.get("vagueGoal")
+    progress = data.get("currentProgress")
+    time_limit = data.get("timeLimit")
 
     if not vague_goal or not progress or not time_limit:
-        return jsonify({"error": "vague_goal, progress and time_limit required"}), 400
+        print("BAD BODY RECEIVED:", data)
+        return jsonify({
+            "error": "vagueGoal, currentProgress, and timeLimit are required"
+        }), 400
 
     completion = client.chat.completions.create(
         model="llama-3.1-8b-instant",
@@ -58,7 +65,8 @@ def generate_onboarding():
                 "role": "system",
                 "content": (
                     "Generate a big goal, weekly mountain info, and daily sample step. "
-                    "Return strict JSON: { bigGoal, weeklyMountain { name, weeklyTarget, note }, dailyStep }"
+                    "Return strict JSON: "
+                    "{ bigGoal, weeklyMountain { name, weeklyTarget, note }, dailyStep }"
                 )
             },
             {
@@ -75,16 +83,17 @@ def generate_onboarding():
     return jsonify(json.loads(completion.choices[0].message.content))
 
 
-# ----------------------------------------------------------
-# WEEKLY MOUNTAIN ENDPOINT
-# ----------------------------------------------------------
+# ===================================================================
+# 2) WEEKLY MOUNTAIN  (matches goldfish EXACTLY)
+# ===================================================================
 @app.post("/weekly-mountain")
-def generate_weekly_mountain():
+def weekly_mountain():
     data = get_json()
-    big_goal = data.get("big_goal")
+    big_goal = data.get("bigGoal")
 
     if not big_goal:
-        return jsonify({"error": "big_goal required"}), 400
+        print("BAD BODY RECEIVED:", data)
+        return jsonify({"error": "bigGoal required"}), 400
 
     completion = client.chat.completions.create(
         model="llama-3.1-8b-instant",
@@ -93,10 +102,7 @@ def generate_weekly_mountain():
         messages=[
             {
                 "role": "system",
-                "content": (
-                    "Generate a weekly mountain. Return strict JSON: "
-                    "{ name, weeklyTarget, note }"
-                )
+                "content": "Return strict JSON: { name, weeklyTarget, note }"
             },
             {
                 "role": "user",
@@ -108,18 +114,19 @@ def generate_weekly_mountain():
     return jsonify(json.loads(completion.choices[0].message.content))
 
 
-# ----------------------------------------------------------
-# DAILY STEPS ENDPOINT (FIXED AGAIN — NOW 100% SAFE)
-# ----------------------------------------------------------
+# ===================================================================
+# 3) DAILY SWEETSTEPS  (matches goldfish EXACTLY)
+# ===================================================================
 @app.post("/daily-steps")
-def generate_daily_steps():
+def daily_steps():
     data = get_json()
-    big_goal = data.get("big_goal")
-    weekly_mountain = data.get("weekly_mountain")
+
+    big_goal = data.get("bigGoal")
+    weekly_mountain = data.get("weeklyMountain")  # object
 
     if not big_goal or not weekly_mountain:
-        print("DATA RECEIVED:", data)
-        return jsonify({"error": "big_goal and weekly_mountain required"}), 400
+        print("BAD BODY RECEIVED:", data)
+        return jsonify({"error": "bigGoal and weeklyMountain required"}), 400
 
     def ask_groq():
         try:
@@ -132,7 +139,8 @@ def generate_daily_steps():
                         "role": "system",
                         "content": (
                             "Generate today's daily SweetSteps using BOTH the big goal "
-                            "and weekly mountain. Return JSON: { steps: [], coachNote }"
+                            "and weekly mountain.\n"
+                            "Return JSON: { steps: [ {title, description, minutes} ], coachNote }"
                         )
                     },
                     {
@@ -169,9 +177,9 @@ def generate_daily_steps():
     return jsonify(result)
 
 
-# ----------------------------------------------------------
-# HEALTH CHECK
-# ----------------------------------------------------------
+# ===================================================================
+# 4) HEALTH CHECK
+# ===================================================================
 @app.get("/")
 def health():
     return {"status": "alive"}, 200
