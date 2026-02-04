@@ -97,32 +97,70 @@ def weekly_mountain():
 # ---------------------------------------------------------
 # 3. DAILY SWEETSTEPS (must use bigGoal + weeklyMountain)
 # ---------------------------------------------------------
-@app.route("/daily-steps", methods=["POST"])
-def daily_steps():
+@app.post("/generate-daily-steps")
+def generate_daily_steps():
     data = request.json
-    bigGoal = data.get("bigGoal", "")
-    weeklyMountain = data.get("weeklyMountain", {})
+    big_goal = data.get("big_goal")
+    weekly_mountain = data.get("weekly_mountain")   # string or object, both fine
 
-    wm_name = weeklyMountain.get("name", "")
-    wm_target = weeklyMountain.get("weeklyTarget", "")
-    wm_note = weeklyMountain.get("note", "")
+    if not big_goal or not weekly_mountain:
+        return jsonify({"error": "big_goal and weekly_mountain required"}), 400
 
-    system_prompt = (
-        "Generate today's micro-steps for the user's big goal **and** weekly mountain. "
-        "Return ONLY JSON:\n"
-        "{ tasks: [{ title, description, estMinutes }], coachNote }"
-    )
+    def call_groq_once():
+        try:
+            completion = client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                temperature=0.7,
+                response_format={"type": "json_object"},   # FORCE STRICT JSON
+                messages=[
+                    {
+                        "role": "system",
+                        "content": (
+                            "Generate today's micro-steps based on BOTH the user's big_goal "
+                            "AND their weekly_mountain. Respond ONLY in a JSON object with:\n"
+                            "steps: array of { title, description, minutes }\n"
+                            "coachNote: string\n"
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": (
+                            f"Big Goal: {big_goal}\n"
+                            f"Weekly Mountain: {weekly_mountain}"
+                        )
+                    }
+                ]
+            )
 
-    user_prompt = (
-        f"Big Goal: {bigGoal}\n"
-        f"Weekly Mountain: {wm_name}\n"
-        f"Weekly Target: {wm_target}\n"
-        f"Weekly Note: {wm_note}\n"
-        "Generate 3–6 microsteps with estimated minutes."
-    )
+            raw = completion.choices[0].message.content
+            return json.loads(raw)
 
-    return jsonify(groq_chat(system_prompt, user_prompt))
+        except Exception as e:
+            print("Groq parse error:", e)
+            return None
 
+    # ----- FIRST ATTEMPT -----
+    result = call_groq_once()
+
+    # ----- RETRY ON BAD JSON -----
+    if result is None:
+        print("Retrying Groq due to invalid JSON…")
+        result = call_groq_once()
+
+        if result is None:
+            return jsonify({
+                "error": "Groq sent invalid JSON twice",
+                "fallback": {
+                    "steps": [
+                        {"title": "Warmup step", "description": "Start gently", "minutes": 5},
+                        {"title": "Progress step", "description": "Move your goal forward", "minutes": 10},
+                        {"title": "Wrap-up step", "description": "Close the loop", "minutes": 5},
+                    ],
+                    "coachNote": "Let's keep moving at a gentle pace!"
+                }
+            }), 500
+
+    return jsonify(result)
 
 # ---------------------------------------------------------
 # HEALTH CHECK
