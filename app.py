@@ -1,125 +1,126 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
+from groq import Groq
+import json
 import os
-import requests
-from dotenv import load_dotenv
-
-load_dotenv()
 
 app = Flask(__name__)
+CORS(app)
 
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
-MODEL = "llama-3.1-8b-instant"
+client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+# ----------------------------------------------------------
+# SAFE JSON EXTRACTOR (Fixes Render empty-body issue)
+# ----------------------------------------------------------
+def get_json():
+    try:
+        if request.is_json:
+            return request.get_json()
+        else:
+            raw = request.data.decode("utf-8")
+            print("RAW BODY FROM RENDER:", raw)
+            return json.loads(raw) if raw else {}
+    except Exception as e:
+        print("JSON PARSE ERROR:", e)
+        return {}
 
-# ---------------------------------------------------------
-#  HELPER FUNCTION: call Groq API
-# ---------------------------------------------------------
-def groq_chat(system_prompt, user_prompt):
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {GROQ_API_KEY}"
-    }
+# ----------------------------------------------------------
+# ONBOARDING ENDPOINT
+# ----------------------------------------------------------
+@app.post("/generate-onboarding")
+def generate_onboarding():
+    data = get_json()
+    vague_goal = data.get("vague_goal")
+    progress = data.get("progress")
+    time_limit = data.get("time_limit")
 
-    body = {
-        "model": MODEL,
-        "temperature": 0.7,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
+    if not vague_goal or not progress or not time_limit:
+        return jsonify({"error": "vague_goal, progress and time_limit required"}), 400
+
+    completion = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        temperature=0.7,
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Generate a big goal, weekly mountain info, and daily sample step. "
+                    "Return strict JSON: { bigGoal, weeklyMountain { name, weeklyTarget, note }, dailyStep }"
+                )
+            },
+            {
+                "role": "user",
+                "content": (
+                    f"Vague Goal: {vague_goal}\n"
+                    f"Current Progress: {progress}\n"
+                    f"Time Limit: {time_limit}"
+                )
+            }
         ]
-    }
-
-    res = requests.post(GROQ_URL, headers=headers, json=body)
-    data = res.json()
-
-    try:
-        return json_safe(data["choices"][0]["message"]["content"])
-    except:
-        return {"error": "Groq response parsing failed", "raw": data}
-
-
-# ---------------------------------------------------------
-#  SAFE JSON PARSE (Groq returns JSON in a string)
-# ---------------------------------------------------------
-import json
-def json_safe(s):
-    try:
-        return json.loads(s)
-    except:
-        return {"error": "Invalid JSON from Groq", "raw": s}
-
-
-# ---------------------------------------------------------
-# 1. ONBOARDING: bigGoal + sample weekly + sample SweetStep
-# ---------------------------------------------------------
-@app.route("/onboarding-plan", methods=["POST"])
-def onboarding_plan():
-    data = request.json
-    vagueGoal = data.get("vagueGoal", "")
-    currentProgress = data.get("currentProgress", "")
-    timeLimit = data.get("timeLimit", "")
-
-    system_prompt = (
-        "You are the Swiss Chocolate Coach. Convert vague goals into a clear big goal, "
-        "then generate one sample weekly mountain (without tasks) and one sample daily SweetStep. "
-        "Return ONLY JSON:\n"
-        "{ bigGoal, weeklyMountain: { name, weeklyTarget, note }, dailyStep }"
     )
 
-    user_prompt = (
-        f"Vague Goal: {vagueGoal}\n"
-        f"Current Progress: {currentProgress}\n"
-        f"Time Limit: {timeLimit}"
-    )
-
-    return jsonify(groq_chat(system_prompt, user_prompt))
+    return jsonify(json.loads(completion.choices[0].message.content))
 
 
-# ---------------------------------------------------------
-# 2. WEEKLY MOUNTAIN (first real weekly mountain)
-# ---------------------------------------------------------
-@app.route("/weekly-mountain", methods=["POST"])
-def weekly_mountain():
-    data = request.json
-    bigGoal = data.get("bigGoal", "")
-
-    system_prompt = (
-        "Generate the FIRST weekly mountain for the user's big goal. "
-        "Return ONLY JSON with keys: { name, weeklyTarget, note }"
-    )
-
-    user_prompt = f"Big Goal: {bigGoal}"
-
-    return jsonify(groq_chat(system_prompt, user_prompt))
-
-
-# ---------------------------------------------------------
-# 3. DAILY SWEETSTEPS (must use bigGoal + weeklyMountain)
-# ---------------------------------------------------------
-@app.post("/daily-steps")
-def generate_daily_steps():
-    data = request.json
+# ----------------------------------------------------------
+# WEEKLY MOUNTAIN ENDPOINT
+# ----------------------------------------------------------
+@app.post("/generate-weekly-mountain")
+def generate_weekly_mountain():
+    data = get_json()
     big_goal = data.get("big_goal")
-    weekly_mountain = data.get("weekly_mountain")   # string or object, both fine
+
+    if not big_goal:
+        return jsonify({"error": "big_goal required"}), 400
+
+    completion = client.chat.completions.create(
+        model="llama-3.1-8b-instant",
+        temperature=0.7,
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "system",
+                "content": (
+                    "Generate a weekly mountain. Return strict JSON: "
+                    "{ name, weeklyTarget, note }"
+                )
+            },
+            {
+                "role": "user",
+                "content": f"Big Goal: {big_goal}"
+            }
+        ]
+    )
+
+    return jsonify(json.loads(completion.choices[0].message.content))
+
+
+# ----------------------------------------------------------
+# DAILY STEPS ENDPOINT (FIXED AGAIN — NOW 100% SAFE)
+# ----------------------------------------------------------
+@app.post("/generate-daily-steps")
+def generate_daily_steps():
+    data = get_json()
+    big_goal = data.get("big_goal")
+    weekly_mountain = data.get("weekly_mountain")
 
     if not big_goal or not weekly_mountain:
+        print("DATA RECEIVED:", data)
         return jsonify({"error": "big_goal and weekly_mountain required"}), 400
 
-    def call_groq_once():
+    def ask_groq():
         try:
-            completion = client.chat.completions.create(
+            c = client.chat.completions.create(
                 model="llama-3.1-8b-instant",
                 temperature=0.7,
-                response_format={"type": "json_object"},   # FORCE STRICT JSON
+                response_format={"type": "json_object"},
                 messages=[
                     {
                         "role": "system",
                         "content": (
-                            "Generate today's micro-steps based on BOTH the user's big_goal "
-                            "AND their weekly_mountain. Respond ONLY in a JSON object with:\n"
-                            "steps: array of { title, description, minutes }\n"
-                            "coachNote: string\n"
+                            "Generate today's daily SweetSteps using BOTH the big goal "
+                            "and weekly mountain. Return JSON: { steps: [], coachNote }"
                         )
                     },
                     {
@@ -131,47 +132,34 @@ def generate_daily_steps():
                     }
                 ]
             )
-
-            raw = completion.choices[0].message.content
-            return json.loads(raw)
-
+            return json.loads(c.choices[0].message.content)
         except Exception as e:
-            print("Groq parse error:", e)
+            print("Groq JSON error:", e)
             return None
 
-    # ----- FIRST ATTEMPT -----
-    result = call_groq_once()
-
-    # ----- RETRY ON BAD JSON -----
+    result = ask_groq()
     if result is None:
-        print("Retrying Groq due to invalid JSON…")
-        result = call_groq_once()
+        print("Retrying Groq…")
+        result = ask_groq()
 
-        if result is None:
-            return jsonify({
-                "error": "Groq sent invalid JSON twice",
-                "fallback": {
-                    "steps": [
-                        {"title": "Warmup step", "description": "Start gently", "minutes": 5},
-                        {"title": "Progress step", "description": "Move your goal forward", "minutes": 10},
-                        {"title": "Wrap-up step", "description": "Close the loop", "minutes": 5},
-                    ],
-                    "coachNote": "Let's keep moving at a gentle pace!"
-                }
-            }), 500
+    if result is None:
+        return jsonify({
+            "error": "Groq returned invalid JSON twice",
+            "fallback": {
+                "steps": [
+                    {"title": "Warm up", "description": "Start small", "minutes": 5},
+                    {"title": "Main push", "description": "Move goal forward", "minutes": 15},
+                ],
+                "coachNote": "Fallback activated; keep pushing!"
+            }
+        }), 500
 
     return jsonify(result)
 
-# ---------------------------------------------------------
+
+# ----------------------------------------------------------
 # HEALTH CHECK
-# ---------------------------------------------------------
-@app.route("/", methods=["GET"])
-def home():
-    return {"status": "SweetSteps AI Proxy running"}
-
-
-# ---------------------------------------------------------
-# RUN
-# ---------------------------------------------------------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+# ----------------------------------------------------------
+@app.get("/health")
+def health():
+    return {"status": "ok"}
