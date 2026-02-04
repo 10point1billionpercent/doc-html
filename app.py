@@ -39,7 +39,7 @@ def get_json():
 # ----------------------------------------------------------
 # ONBOARDING ENDPOINT
 # ----------------------------------------------------------
-@app.post("/generate-onboarding")
+@app.post("/onboarding-plan")
 def generate_onboarding():
     data = get_json()
     vague_goal = data.get("vague_goal")
@@ -78,7 +78,7 @@ def generate_onboarding():
 # ----------------------------------------------------------
 # WEEKLY MOUNTAIN ENDPOINT
 # ----------------------------------------------------------
-@app.post("/generate-weekly-mountain")
+@app.post("/weekly-mountain")
 def generate_weekly_mountain():
     data = get_json()
     big_goal = data.get("big_goal")
