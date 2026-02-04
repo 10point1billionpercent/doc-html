@@ -160,6 +160,6 @@ def generate_daily_steps():
 # ----------------------------------------------------------
 # HEALTH CHECK
 # ----------------------------------------------------------
-@app.get("/health")
+@app.get("/")
 def health():
-    return {"status": "ok"}
+    return {"status": "alive"}, 200
