@@ -145,7 +145,7 @@ def generate_daily_steps():
                         "content": (
                             "Generate today's Daily SweetSteps.\n"
                             "Return STRICT JSON:\n"
-                            "{ steps: [ { day: string, task: string, time: string } ],\n"
+                            "{ tasks: [ { day: string, task: string, time: string } ],\n"
                             "  coachNote: string }\n"
                             "All fields MUST be strings."
                         )
@@ -173,7 +173,7 @@ def generate_daily_steps():
         return jsonify({
             "error": "Groq failed twice",
             "fallback": {
-                "steps": [
+                "tasks": [
                     {"day": "Today", "task": "Warm up", "time": "5 minutes"},
                     {"day": "Today", "task": "Main push", "time": "15 minutes"}
                 ],
