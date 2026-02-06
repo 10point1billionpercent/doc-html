@@ -7,7 +7,7 @@ import os
 app = Flask(__name__)
 
 # ----------------------------------------------------------
-# CAFEINE-SAFE, MINIMAL, UNIVERSAL CORS
+# UNIVERSAL CORS
 # ----------------------------------------------------------
 CORS(
     app,
@@ -39,7 +39,7 @@ def get_json():
         return {}
 
 # ----------------------------------------------------------
-# 1) ONBOARDING
+# 1) ONBOARDING PLAN (unchanged for now)
 # ----------------------------------------------------------
 @app.post("/onboarding-plan")
 def generate_onboarding():
@@ -81,7 +81,7 @@ def generate_onboarding():
     return jsonify(json.loads(completion.choices[0].message.content))
 
 # ----------------------------------------------------------
-# 2) WEEKLY MOUNTAIN
+# 2) WEEKLY MOUNTAIN — NEW GENTLE VERSION
 # ----------------------------------------------------------
 @app.post("/weekly-mountain")
 def generate_weekly_mountain():
@@ -99,9 +99,30 @@ def generate_weekly_mountain():
             {
                 "role": "system",
                 "content": (
-                    "Generate a weekly mountain. "
-                    "Return STRICT JSON:\n"
-                    "{ name: string, note: string, weeklyTarget: string }"
+                    "You generate a Weekly Mountain.\n"
+                    "The goal: ONE gentle, realistic, motivating focus for the week.\n"
+                    "\n"
+                    "RULES:\n"
+                    "- The mountain must be SMALL and KIND.\n"
+                    "- It must feel doable even during a stressful week.\n"
+                    "- No big deadlines, no giant projects, no unrealistic workload.\n"
+                    "- It should be something the user can complete in 3–5 tiny sessions.\n"
+                    "- Tone must be warm, soft, encouraging.\n"
+                    "\n"
+                    "FORMAT (STRICT):\n"
+                    "{\n"
+                    "  name: string,\n"
+                    "  note: string,\n"
+                    "  weeklyTarget: string\n"
+                    "}\n"
+                    "\n"
+                    "Examples of good soft mountains:\n"
+                    "- \"Create one small portfolio improvement\"\n"
+                    "- \"Learn the basics of one Express concept\"\n"
+                    "- \"Do gentle progress on LinkedIn presence\"\n"
+                    "- \"Prepare one clean resume section\"\n"
+                    "\n"
+                    "The note must feel like a supportive friend.\n"
                 )
             },
             {
@@ -114,9 +135,7 @@ def generate_weekly_mountain():
     return jsonify(json.loads(completion.choices[0].message.content))
 
 # ----------------------------------------------------------
-# ----------------------------------------------------------
-# 3) DAILY SWEETSTEPS  (FINAL + FRONTEND-COMPATIBLE)
-# /daily-steps
+# 3) DAILY SWEETSTEPS — FINAL MICRO-STEPS VERSION
 # ----------------------------------------------------------
 @app.post("/daily-steps")
 def generate_daily_steps():
@@ -138,21 +157,25 @@ def generate_daily_steps():
                     {
                         "role": "system",
                         "content": (
-                            "Generate today's Daily SweetSteps.\n"
-"Return STRICT JSON with EXACT shape:\n"
-"{\n"
-"  tasks: [\n"
-"    { title: string, description: string, estimatedMinutes: number }\n"
-"  ],\n"
-"  coachNote: string\n"
-"}\n"
-"Rules:\n"
-"- estimatedMinutes MUST be a number between 5 and 30.\n"
-"- NEVER exceed 30 minutes.\n"
-"- NEVER return hours.\n"
-"- Prefer 10, 15, 20, 25, or 30-minute tasks.\n"
-"- Tasks should be practical tiny steps, not giant goals.\n"
-"- NO extra fields. NO nested objects."
+                            "You generate today's Daily SweetSteps.\n"
+                            "Your job: help the user make REAL progress without feeling overwhelmed.\n"
+                            "\n"
+                            "Every task MUST be tiny, gentle, and easy to start.\n"
+                            "\n"
+                            "RULES:\n"
+                            "1. Tasks must be ATOMIC (one small action only).\n"
+                            "2. Tasks must be 5–20 minutes (MAX 30).\n"
+                            "3. Never give giant study sessions, big goals, or multi-step tasks.\n"
+                            "4. Everything must feel emotionally safe.\n"
+                            "5. Tasks must be SPECIFIC and ACTIONABLE.\n"
+                            "6. Tone must be warm + encouraging + cute.\n"
+                            "7. Output STRICT JSON:\n"
+                            "{\n"
+                            "  tasks: [\n"
+                            "    { title: string, description: string, estimatedMinutes: number }\n"
+                            "  ],\n"
+                            "  coachNote: string\n"
+                            "}\n"
                         )
                     },
                     {
@@ -169,36 +192,36 @@ def generate_daily_steps():
             print("Groq JSON ERROR:", e)
             return None
 
-    # First try
+    # Attempt 1
     out = ask()
 
-    # Retry once if needed
+    # Retry if malformed
     if out is None or "tasks" not in out:
         print("Retrying Groq once…")
         out = ask()
 
-    # If STILL invalid, return safe fallback
+    # Hard fallback
     if out is None or "tasks" not in out:
         return jsonify({
             "tasks": [
                 {
-                    "title": "Warm-up Push",
-                    "description": "Do a tiny 5-minute action toward your weekly mountain.",
+                    "title": "Tiny Warm-up",
+                    "description": "Take 5 minutes to gently start moving toward your mountain.",
                     "estimatedMinutes": 5
                 },
                 {
-                    "title": "Main Step",
-                    "description": "A meaningful action that moves your big goal forward.",
+                    "title": "Small Progress",
+                    "description": "Take one tiny actionable step toward your big goal.",
                     "estimatedMinutes": 15
                 }
             ],
-            "coachNote": "Fallback activated — don’t stop now!"
+            "coachNote": "Fallback activated — even tiny steps count!"
         }), 200
 
     return jsonify(out)
 
 # ----------------------------------------------------------
-# HEALTH
+# HEALTH CHECK
 # ----------------------------------------------------------
 @app.get("/")
 def health():
