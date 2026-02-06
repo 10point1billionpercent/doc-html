@@ -114,7 +114,9 @@ def generate_weekly_mountain():
     return jsonify(json.loads(completion.choices[0].message.content))
 
 # ----------------------------------------------------------
-# 3) DAILY SWEETSTEPS
+# ----------------------------------------------------------
+# 3) DAILY SWEETSTEPS  (FINAL + FRONTEND-COMPATIBLE)
+# /daily-steps
 # ----------------------------------------------------------
 @app.post("/daily-steps")
 def generate_daily_steps():
@@ -123,6 +125,7 @@ def generate_daily_steps():
     weekly_mountain = data.get("weeklyMountain")
 
     if not big_goal or not weekly_mountain:
+        print("DATA RECEIVED:", data)
         return jsonify({"error": "bigGoal and weeklyMountain required"}), 400
 
     def ask():
@@ -136,9 +139,16 @@ def generate_daily_steps():
                         "role": "system",
                         "content": (
                             "Generate today's Daily SweetSteps.\n"
-                            "Return STRICT JSON:\n"
-                            "{ tasks: [ { day: string, task: string, time: string } ],\n"
-                            "  coachNote: string }"
+                            "Return STRICT JSON with EXACT shape:\n"
+                            "{\n"
+                            "  tasks: [\n"
+                            "    { title: string, description: string, estimatedMinutes: number }\n"
+                            "  ],\n"
+                            "  coachNote: string\n"
+                            "}\n"
+                            "All fields required.\n"
+                            "NO extra fields. NO nested objects.\n"
+                            "estimatedMinutes MUST be a number (not a string)."
                         )
                     },
                     {
@@ -155,21 +165,31 @@ def generate_daily_steps():
             print("Groq JSON ERROR:", e)
             return None
 
+    # First try
     out = ask()
-    if out is None:
+
+    # Retry once if needed
+    if out is None or "tasks" not in out:
+        print("Retrying Groq once…")
         out = ask()
 
-    if out is None:
+    # If STILL invalid, return safe fallback
+    if out is None or "tasks" not in out:
         return jsonify({
-            "error": "Groq failed twice",
-            "fallback": {
-                "tasks": [
-                    {"day": "Today", "task": "Warm up", "time": "5 minutes"},
-                    {"day": "Today", "task": "Main push", "time": "15 minutes"}
-                ],
-                "coachNote": "Fallback activated, keep going!"
-            }
-        }), 500
+            "tasks": [
+                {
+                    "title": "Warm-up Push",
+                    "description": "Do a tiny 5-minute action toward your weekly mountain.",
+                    "estimatedMinutes": 5
+                },
+                {
+                    "title": "Main Step",
+                    "description": "A meaningful action that moves your big goal forward.",
+                    "estimatedMinutes": 15
+                }
+            ],
+            "coachNote": "Fallback activated — don’t stop now!"
+        }), 200
 
     return jsonify(out)
 
